@@ -27,31 +27,6 @@ def extract_text_from_pdf(uploaded_file):
         raise FileNotFoundError("No file uploaded")
 
 # --- Streamlit UI ---
-# Intro Section
-st.markdown("### 🛠️ How It Works")
-
-with st.expander("📘 Click to see how this app works"):
-    st.markdown("""
-    1. **Upload Your Resume (PDF Only):**  
-       Choose your resume file to be analyzed by the system.
-
-    2. **Paste Job Description:**  
-       Provide the job description you want to match your resume against.
-
-    3. **Click 'Review Resume':**  
-       You'll get a professional evaluation of your resume, highlighting strengths and weaknesses.
-
-    4. **Click 'Match Percentage':**  
-       Get an ATS-style match score, missing keywords, and suggestions to improve your resume for the job role.
-
-    ---
-
-    ✅ Works best with **Data Science / Tech roles**  
-    ✅ No need to install extra software – fully browser-based  
-    ✅ Built using **Streamlit + Google Gemini AI**
-
-    📌 *Note: This app uses AI and provides suggestions, not guaranteed job matches.*
-    """)
 
 st.set_page_config(page_title="ATS Resume Expert", layout="centered")
 
