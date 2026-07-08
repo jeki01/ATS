@@ -10,10 +10,13 @@ import google.generativeai as genai
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # Gemini response generator
-def get_gemini_response(prompt_intro, pdf_text, job_desc):
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    response = model.generate_content([prompt_intro, pdf_text, job_desc])
-    return response.text
+from google import genai
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
+response = client.models.generate_content(
+    model="gemini-3.5-flash",
+    contents=final_prompt
+)
 
 # Extract text from PDF using PyMuPDF
 def extract_text_from_pdf(uploaded_file):
