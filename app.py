@@ -1,44 +1,74 @@
-import os
-import streamlit as st
-import fitz  # PyMuPDF
 from dotenv import load_dotenv
-
 load_dotenv()
 
+import streamlit as st
+import fitz
+from google import genai
+
+# -------------------------
+# Streamlit Config
+# -------------------------
+st.set_page_config(
+    page_title="ATS Resume Expert",
+    page_icon="📄",
+    layout="centered"
+)
+
+# -------------------------
+# Get API Key
+# -------------------------
 try:
-    from google import genai
-except ImportError:
-    st.error("Package missing: Add google-genai in requirements.txt and reboot Streamlit app.")
+    api_key = st.secrets["GOOGLE_API_KEY"]
+except:
+    st.error("GOOGLE_API_KEY not found in Streamlit Secrets.")
     st.stop()
 
-
-# ---------------- Gemini API Setup ----------------
-
-api_key = os.getenv("GOOGLE_API_KEY")
-
-try:
-    api_key = api_key or st.secrets["GOOGLE_API_KEY"]
-except Exception:
-    pass
-
-if not api_key:
-    st.error("GOOGLE_API_KEY missing. Add it in Streamlit Secrets or .env file.")
-    st.stop()
-
+# Gemini Client
 client = genai.Client(api_key=api_key)
 
 
-# ---------------- Helper Functions ----------------
+# -------------------------
+# Extract text from PDF
+# -------------------------
+def extract_text_from_pdf(uploaded_file):
+    text = ""
 
-def get_gemini_response(prompt_intro, pdf_text, job_desc):
+    try:
+        pdf_document = fitz.open(
+            stream=uploaded_file.read(),
+            filetype="pdf"
+        )
+
+        for page in pdf_document:
+            text += page.get_text()
+
+        pdf_document.close()
+
+    except Exception as e:
+        st.error(f"Error reading PDF: {e}")
+
+    return text
+
+
+# -------------------------
+# Gemini Response
+# -------------------------
+def get_gemini_response(prompt, resume_text, job_description):
+
     final_prompt = f"""
-{prompt_intro}
+{prompt}
 
-Resume Text:
-{pdf_text}
+==========================
+RESUME
+==========================
 
-Job Description:
-{job_desc}
+{resume_text}
+
+==========================
+JOB DESCRIPTION
+==========================
+
+{job_description}
 """
 
     response = client.models.generate_content(
@@ -49,130 +79,128 @@ Job Description:
     return response.text
 
 
-def extract_text_from_pdf(uploaded_file):
-    if uploaded_file is None:
-        raise FileNotFoundError("No file uploaded")
+# -------------------------
+# Prompt Templates
+# -------------------------
+evaluation_prompt = """
+You are an experienced HR Manager and Technical Recruiter.
 
-    uploaded_file.seek(0)
-    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+Analyze the resume against the job description and provide:
 
-    text = ""
-    for page in doc:
-        text += page.get_text()
+1. Overall evaluation
+2. Strengths
+3. Weaknesses
+4. Missing skills
+5. Suggestions for improvement
+"""
 
-    doc.close()
-    return text
+match_prompt = """
+You are an ATS system.
+
+Analyze the resume against the job description and provide:
+
+1. ATS Match Percentage
+2. Matching Skills
+3. Missing Keywords
+4. Areas to Improve
+5. Final Recommendation
+
+Return response in detailed format.
+"""
 
 
-# ---------------- Streamlit UI ----------------
+# -------------------------
+# UI
+# -------------------------
+st.title("📄 ATS Resume Expert")
 
-st.set_page_config(
-    page_title="ATS Resume Expert",
-    layout="centered"
+st.write(
+    "Upload your resume and compare it with the job description."
 )
 
-st.markdown(
-    "<h1 style='text-align: center; color: #4CAF50;'>📄 ATS Resume Expert</h1>",
-    unsafe_allow_html=True
+job_description = st.text_area(
+    "💼 Paste Job Description",
+    height=250
 )
-
-st.markdown("### 👇 Upload your resume & paste the job description")
-
-job_description = st.text_area("💼 Job Description", key="input")
 
 uploaded_file = st.file_uploader(
-    "📎 Upload your Resume (PDF only)",
+    "📎 Upload Resume (PDF only)",
     type=["pdf"]
 )
 
 if uploaded_file:
-    st.success("✅ PDF uploaded successfully!")
-
-
-# ---------------- Prompt Templates ----------------
-
-evaluation_prompt = """
-You are an experienced Technical Human Resource Manager.
-Review the provided resume against the job description.
-Give a professional evaluation of how well the resume aligns with the role.
-Highlight strengths, weaknesses, and improvement suggestions.
-"""
-
-match_prompt = """
-You are an ATS Applicant Tracking System scanner with expertise in resume evaluation.
-Analyze the resume against the job description.
-
-Return the response in this format:
-
-1. Percentage Match
-2. Missing Keywords
-3. Strong Matching Skills
-4. Weak Areas
-5. Final Thoughts
-
-Do not give percentage alone. Always provide detailed feedback.
-"""
-
-
-# ---------------- Buttons ----------------
+    st.success("Resume uploaded successfully ✅")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    submit_eval = st.button("🔍 Review Resume")
+    review_button = st.button(
+        "🔍 Review Resume",
+        use_container_width=True
+    )
 
 with col2:
-    submit_match = st.button("📊 Match Percentage")
+    match_button = st.button(
+        "📊 ATS Match",
+        use_container_width=True
+    )
 
 
-# ---------------- Main Logic ----------------
+# -------------------------
+# Actions
+# -------------------------
+if review_button or match_button:
 
-if submit_eval or submit_match:
-
-    if not uploaded_file:
-        st.warning("⚠️ Please upload your resume to proceed.")
+    if uploaded_file is None:
+        st.warning("Please upload your resume.")
         st.stop()
 
     if not job_description.strip():
-        st.warning("⚠️ Please paste the job description.")
+        st.warning("Please enter the job description.")
         st.stop()
 
-    try:
-        with st.spinner("Analyzing your resume..."):
-            pdf_text = extract_text_from_pdf(uploaded_file)
+    with st.spinner("Analyzing Resume..."):
 
-            if not pdf_text.strip():
-                st.error("Could not extract text from this PDF. Please upload a text-based resume PDF.")
-                st.stop()
+        resume_text = extract_text_from_pdf(uploaded_file)
 
-            if submit_eval:
-                response = get_gemini_response(
+        if len(resume_text.strip()) == 0:
+            st.error("Unable to extract text from PDF.")
+            st.stop()
+
+        try:
+            if review_button:
+                result = get_gemini_response(
                     evaluation_prompt,
-                    pdf_text,
+                    resume_text,
                     job_description
                 )
-                st.subheader("📄 Evaluation Result")
-                st.write(response)
 
-            elif submit_match:
-                response = get_gemini_response(
+                st.subheader("📄 Resume Review")
+                st.write(result)
+
+            if match_button:
+                result = get_gemini_response(
                     match_prompt,
-                    pdf_text,
+                    resume_text,
                     job_description
                 )
-                st.subheader("📊 Match Analysis")
-                st.write(response)
 
-    except Exception as e:
-        st.error("Something went wrong while processing.")
-        st.exception(e)
+                st.subheader("📊 ATS Match Result")
+                st.write(result)
+
+        except Exception as e:
+            st.error(f"Gemini Error: {e}")
 
 
-# ---------------- Footer ----------------
-
+# -------------------------
+# Footer
+# -------------------------
 st.markdown("---")
-
 st.markdown(
-    "<p style='text-align: center; font-size: 14px; color: gray;'>© 2026 All rights reserved by <strong>Jeki Panchal</strong></p>",
+    """
+    <center>
+    © 2026 ATS Resume Expert | Developed by <b>Jeki Panchal</b>
+    </center>
+    """,
     unsafe_allow_html=True
 )
